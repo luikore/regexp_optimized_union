@@ -1,4 +1,12 @@
-`Regexp.optimized_union(word_list, regexp_options)` generates optimized regexp for matching union of word list.
+`Regexp.optimized_union(word_list, regexp_options)` generates optimized regexp for matching union of word list. Works similar to `Regexp.union`, but API receives Regexp compile option.
+
+### Install:
+
+```bash
+gem ins regexp_optimized_union
+```
+
+### Use:
 
 ```ruby
 require 'regexp_optimized_union'
@@ -7,12 +15,12 @@ Regexp.optimized_union(%w[fooabar foobbar], 'i')    #=> /foo[ab]bar/i
 Regexp.optimized_union(%w[foobar fooabar foogabar]) #=> /foo(?:|a|ga)bar/
 ```
 
-Caveats:
+### Caveats:
 
 - All words in the list will be escaped.
 - Matching time for the light but compile time for the dark, you are the balance between them.
 
-Works similar to `Regexp.union`, but API receives Regexp compile option. Optimizations include:
+### Optimizations include:
 
 - Treed common prefix extraction.
 - Common suffix aggregation.
