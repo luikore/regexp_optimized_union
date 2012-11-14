@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = "regexp_optimized_union"
-  s.version     = '0.1.1'
+  s.version     = '0.1.2'
   s.authors     = ["luikore"]
   s.homepage    = "https://github.com/luikore/regexp_optimized_union"
   s.summary     = "Regexp.optimized_union(word_list, regexp_options) generates optimized regexp for matching union of word list"

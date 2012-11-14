@@ -1,3 +1,14 @@
+if RUBY_VERSION < '1.9'
+  require 'enumerator'
+  class String
+    unless defined?(ord)
+      def ord
+        unpack('C').first
+      end
+    end
+  end
+end
+
 class Regexp
   # trie for optimization
   class OptimizeTrie < Hash
@@ -14,7 +25,7 @@ class Regexp
     def single_char?
       size == 1 and values[0].empty?
     end
-    
+
     # prereq: single_branch?
     def to_chars
       if empty?
@@ -23,7 +34,7 @@ class Regexp
         [keys[0], *values[0].to_chars]
       end
     end
-    
+
     # prereq: opt_suffix
     # returns: regexp src
     def extract_common_suffix
@@ -46,12 +57,12 @@ class Regexp
           break
         end
       end
-        
+
       if common_size
         common = branches[0].take(common_size).reverse.join
         if branches.all?{|b| b.size == common_size + 1 }
-          diff = branches.map(&:last).join
-          "[#{diff}]#{common}"
+          diff = build_char_group(branches.map &:last)
+          "#{diff}#{common}"
         else
           diff = branches.map do |b|
             b.drop(common_size).reverse.join
@@ -61,25 +72,67 @@ class Regexp
       end
     end
 
+    def build_char_group chars
+      return chars.first if chars.size == 1
+
+      if RUBY_VERSION < '1.9'
+        chars, mb_chars = chars.partition{|c| c.bytesize == 1}
+      else
+        mb_chars = []
+      end
+
+      chars = chars.map(&:ord)
+      chars.sort!
+      first_char = chars.shift
+      groups = [(first_char..first_char)]
+      chars.each do |c|
+        if c == groups.last.end + 1
+          groups[-1] = groups.last.begin..c
+        else
+          groups << (c..c)
+        end
+      end
+
+      groups.map! do |range|
+        # only apply range to >= 4 contiguous chars
+        if range.end >= range.begin + 3
+          "#{range.begin.chr}-#{range.end.chr}"
+        elsif range.end > range.begin
+          range.map(&:chr).join
+        else
+          range.begin.chr
+        end
+      end
+
+      "[#{groups.join}#{mb_chars.join}]"
+    end
+
     def to_re_src
       return '' if empty?
-      
+
       res = extract_common_suffix if opt_suffix
+      char_group = false
       if !res
         can_be_branched = true
-        res = map do |key, value|
+        branches = map do |key, value|
           "#{key}#{value.to_re_src}"
-        end.join '|'
+        end
+        if branches.all?{|b| b.bytesize == 1}
+          char_group = true
+          res = build_char_group branches
+        else
+          res = branches.join '|'
+        end
       end
-      
+
       if opt_maybe
-        if single_char?
+        if char_group or single_char?
           "#{res}?"
         else
           "(?:#{res})?"
         end
       else
-        if can_be_branched and size > 1 and parent
+        if can_be_branched and size > 1 and parent and !char_group
           "(?:#{res})"
         else
           res
@@ -125,8 +178,11 @@ class Regexp
 end
 
 if __FILE__ == $PROGRAM_NAME
+  # NOTE test will fail under ruby 1.8.7 due to hash order, but results should be identical
+  success = true
   {
     %w[]                        => //,
+    %w[a b c d f]               => /[a-df]/,
     %w[foo]                     => /foo/,
     %w[foo bar]                 => /foo|bar/,
     %w[foo foob bar]            => /foob?|bar/,
@@ -134,17 +190,22 @@ if __FILE__ == $PROGRAM_NAME
     %w[bazfoo bazfoobar bazbar] => /baz(?:foo(?:bar)?|bar)/,
     %w[fooabar foobbar]         => /foo[ab]bar/,
     %w[fooabar foobazbar]       => /foo(?:a|baz)bar/,
-    %w[foobar fooabar foogabar] => /foo(?:|a|ga)bar/
+    %w[foobar fooabar foogabar] => /foo(?:|a|ga)bar/,
+    %w[vax vcx vbx vdx]         => /v[a-d]x/,
+    %w[vax vcx vbx]             => /v[abc]x/,
+    %w[xa xc xb x]              => /x[abc]?/
   }.each do |a, r|
     l = Regexp.optimized_union a
     a.each do |s|
       if l.match(s).offset(0) != [0, s.size]
-        raise "#{l.inspect} from #{a.inspect} not match #{s.inspect}"
+        success = false
+        puts "#{l.inspect} from #{a.inspect} not match #{s.inspect}"
       end
     end
     if r != l
-      raise "expected #{r} from #{a.inspect} but got #{l}"
+      success = false
+      puts "expected #{r} from #{a.inspect} but got #{l}"
     end
   end
-  puts 'test success!'
+  puts 'test success!' if success
 end
