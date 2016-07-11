@@ -1,13 +1,4 @@
-if RUBY_VERSION < '1.9'
-  require 'enumerator'
-  class String
-    unless defined?(ord)
-      def ord
-        unpack('C').first
-      end
-    end
-  end
-end
+# coding: UTF-8
 
 class Regexp
   # trie for optimization
@@ -75,11 +66,7 @@ class Regexp
     def build_char_group chars
       return chars.first if chars.size == 1
 
-      if RUBY_VERSION < '1.9'
-        chars, mb_chars = chars.partition{|c| c.bytesize == 1}
-      else
-        mb_chars = []
-      end
+      mb_chars = []
 
       chars = chars.map(&:ord)
       chars.sort!
@@ -93,18 +80,18 @@ class Regexp
         end
       end
 
-      groups.map! do |range|
+      groups = groups.flat_map do |range|
         # only apply range to >= 4 contiguous chars
         if range.end >= range.begin + 3
-          "#{range.begin.chr}-#{range.end.chr}"
+          [range.begin, '-'.ord, range.end]
         elsif range.end > range.begin
-          range.map(&:chr).join
+          range.to_a
         else
-          range.begin.chr
+          [range.begin]
         end
       end
 
-      "[#{groups.join}#{mb_chars.join}]"
+      "[#{groups.pack 'U*'}#{mb_chars.join}]"
     end
 
     def to_re_src
@@ -148,6 +135,7 @@ class Regexp
     # build trie
     a.each do |s|
       next if s.empty?
+      s = s.encode 'utf-8'
       t = trie
       s.chars.each do |c|
         c = Regexp.escape c
@@ -193,7 +181,10 @@ if __FILE__ == $PROGRAM_NAME
     %w[foobar fooabar foogabar] => /foo(?:|a|ga)bar/,
     %w[vax vcx vbx vdx]         => /v[a-d]x/,
     %w[vax vcx vbx]             => /v[abc]x/,
-    %w[xa xc xb x]              => /x[abc]?/
+    %w[xa xc xb x]              => /x[abc]?/,
+    %w[一郎 二郎 三郎 四郎]        => /[一三二四]郎/,
+    # caveats: escape chars can not be turned into char group
+    %w[a^ a- a*]                => /a(?:\^|\-|\*)/,
   }.each do |a, r|
     l = Regexp.optimized_union a
     a.each do |s|
